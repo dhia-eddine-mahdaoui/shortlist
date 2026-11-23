@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Shortlist Connector",
+  "version": "0.1.0",
+  "description": "Lets the Shortlist desktop app read LinkedIn job listings in your signed-in Chrome.",
+  "minimum_chrome_version": "116",
+  "permissions": ["scripting", "tabs", "storage", "alarms"],
+  "host_permissions": ["https://www.linkedin.com/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Shortlist" },
+  "icons": { "48": "icon48.png", "128": "icon128.png" }
+}
