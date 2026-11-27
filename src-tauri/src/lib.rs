@@ -265,6 +265,14 @@ async fn connect_ai(kind: String) -> Result<String, String> {
     }
 }
 
+fn show_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -277,6 +285,18 @@ pub fn run() {
                 Some(d) => PathBuf::from(d),
                 None => app.path().data_dir().unwrap_or_else(|_| std::env::temp_dir()).join("Shortlist"),
             };
+            // One copy per data folder: a second start brings up the first one and quits.
+            // If the folder can't be locked at all, start anyway.
+            match store::claim(&dir) {
+                Ok(Some(lock)) => {
+                    app.manage(lock);
+                }
+                Ok(None) => {
+                    server::ask_to_show();
+                    std::process::exit(0);
+                }
+                Err(e) => eprintln!("Shortlist: couldn't lock {}: {e}", dir.display()),
+            }
             store::init(app.handle().clone(), dir);
             let ext = ext_dir();
             let _ = std::fs::create_dir_all(&ext);
@@ -284,6 +304,10 @@ pub fn run() {
                 let _ = std::fs::write(ext.join(name), bytes);
             }
             server::start();
+            // Created here, not at launch, so a second copy never shows a window.
+            if let Some(window) = app.config().app.windows.first().cloned() {
+                tauri::WebviewWindowBuilder::from_config(app, &window)?.build()?;
+            }
             Ok(())
         })
         .on_window_event(|_window, _event| {
@@ -306,10 +330,7 @@ pub fn run() {
             // Clicking the Dock icon brings the window back.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = _event {
-                if let Some(w) = _app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_window(_app);
             }
         });
 }

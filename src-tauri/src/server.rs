@@ -30,6 +30,15 @@ pub fn start() {
     });
 }
 
+/// Asks the copy that is already running to bring its window forward.
+pub fn ask_to_show() {
+    let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port())) else { return };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let request = "POST /show HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+    let _ = stream.write_all(request.as_bytes());
+    let _ = stream.read(&mut [0u8; 64]);
+}
+
 fn respond(stream: &mut TcpStream, status: &str, body: &str) {
     let head = format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
@@ -45,6 +54,57 @@ fn loopback_host(h: &str) -> bool {
     matches!(name, "127.0.0.1" | "localhost" | "::1")
 }
 
+/// The request headers the server looks at, in lower case.
+#[derive(Default)]
+struct Headers {
+    len: usize,
+    host: String,
+    origin: Option<String>,
+    content_type: String,
+    fetch_mode: String,
+}
+
+impl Headers {
+    fn read(&mut self, line: &str) {
+        let Some((name, value)) = line.split_once(':') else { return };
+        let value = value.trim().to_ascii_lowercase();
+        match name.to_ascii_lowercase().as_str() {
+            "content-length" => self.len = value.parse().unwrap_or(0),
+            "host" => self.host = value,
+            "origin" => self.origin = Some(value),
+            "content-type" => self.content_type = value,
+            "sec-fetch-mode" => self.fetch_mode = value,
+            _ => {}
+        }
+    }
+}
+
+/// Why a request is turned away, if it is. Web pages must not drive the app: only command-line
+/// clients, local pages, and browser extensions (for /ext/ only) get in.
+fn refusal(method: &str, path: &str, h: &Headers) -> Option<&'static str> {
+    // The Host check blocks DNS rebinding.
+    if !loopback_host(&h.host) {
+        return Some("403 Forbidden");
+    }
+    // Command-line clients send no Origin. "null" is refused: any website can send it
+    // from a sandboxed frame.
+    let origin_ok = match h.origin.as_deref() {
+        None => true,
+        Some(o) if o.starts_with("chrome-extension://") || o.starts_with("moz-extension://") => path.starts_with("/ext/"),
+        Some(o) => loopback_host(o.split("://").nth(1).unwrap_or("")),
+    };
+    // Images, scripts, frames and links send no Origin on a GET, but browsers label them.
+    let page_element = path != "/health" && matches!(h.fetch_mode.as_str(), "no-cors" | "navigate");
+    if !origin_ok || page_element {
+        return Some("403 Forbidden");
+    }
+    // Another site's page can only send JSON after a CORS preflight, which is never granted.
+    if method == "POST" && h.content_type.split(';').next().unwrap_or("").trim() != "application/json" {
+        return Some("415 Unsupported Media Type");
+    }
+    None
+}
+
 fn serve(mut stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let mut reader = BufReader::new(match stream.try_clone() {
@@ -55,7 +115,7 @@ fn serve(mut stream: TcpStream) {
     if reader.read_line(&mut first).is_err() {
         return;
     }
-    let (mut len, mut origin, mut host_ok) = (0usize, None::<String>, false);
+    let mut headers = Headers::default();
     loop {
         let mut line = String::new();
         if reader.read_line(&mut line).unwrap_or(0) == 0 {
@@ -65,36 +125,19 @@ fn serve(mut stream: TcpStream) {
         if l.is_empty() {
             break;
         }
-        let lower = l.to_ascii_lowercase();
-        if let Some(v) = lower.strip_prefix("content-length:") {
-            len = v.trim().parse().unwrap_or(0);
-        } else if let Some(v) = lower.strip_prefix("origin:") {
-            origin = Some(v.trim().to_string());
-        } else if let Some(v) = lower.strip_prefix("host:") {
-            host_ok = loopback_host(v);
-        }
+        headers.read(l);
     }
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
     let path = parts.next().unwrap_or("").split('?').next().unwrap_or("").to_string();
 
-    // Web pages must not drive the app: only command-line clients (no Origin), local pages,
-    // and browser extensions (for /ext/ only) get in. The Host check blocks DNS rebinding.
-    let origin_ok = match origin.as_deref() {
-        None | Some("null") => true,
-        Some(o) if o.starts_with("chrome-extension://") || o.starts_with("moz-extension://") => path.starts_with("/ext/"),
-        Some(o) => {
-            let rest = o.split("://").nth(1).unwrap_or("");
-            loopback_host(rest) || o.starts_with("tauri://") || o.starts_with("http://tauri.localhost")
-        }
-    };
-    if !host_ok || !origin_ok {
-        return respond(&mut stream, "403 Forbidden", "{}");
+    if let Some(status) = refusal(&method, &path, &headers) {
+        return respond(&mut stream, status, "{}");
     }
 
     let mut body = Vec::new();
     if method == "POST" {
-        body = vec![0u8; len.min(20 * 1024 * 1024)];
+        body = vec![0u8; headers.len.min(20 * 1024 * 1024)];
         if reader.read_exact(&mut body).is_err() {
             return respond(&mut stream, "400 Bad Request", "{}");
         }
@@ -106,6 +149,10 @@ fn serve(mut stream: TcpStream) {
             let b = json!({ "status": "ok", "app": "Shortlist", "version": env!("CARGO_PKG_VERSION"),
                             "mcp": format!("http://127.0.0.1:{}/mcp", port()), "chrome": store::ext_connected() });
             respond(&mut stream, "200 OK", &b.to_string())
+        }
+        ("POST", "/show") => {
+            crate::show_window(&store::s().app);
+            respond(&mut stream, "200 OK", "{}")
         }
         ("GET", "/ext/status") => {
             let b = json!({ "app": "Shortlist", "scan": store::scan_json() });
@@ -552,5 +599,49 @@ fn call(name: &str, a: &Value) -> Result<String, String> {
             Ok(msg)
         }
         _ => Err(format!("Unknown tool {name}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(method: &str, path: &str, extra: &[&str]) -> Option<&'static str> {
+        let mut h = Headers::default();
+        h.read("Host: 127.0.0.1:12731");
+        for line in extra {
+            h.read(line);
+        }
+        refusal(method, path, &h)
+    }
+
+    const JSON: &str = "Content-Type: application/json";
+    const EXT: &str = "Origin: chrome-extension://abcdef";
+
+    #[test]
+    fn assistants_and_the_extension_get_in() {
+        assert_eq!(check("POST", "/mcp", &[JSON]), None);
+        // Node's fetch labels its requests "cors" and sends no Origin.
+        assert_eq!(check("POST", "/mcp", &["Content-Type: application/json; charset=utf-8", "Sec-Fetch-Mode: cors"]), None);
+        assert_eq!(check("GET", "/ext/next", &["Sec-Fetch-Mode: cors"]), None);
+        assert_eq!(check("POST", "/ext/event", &[EXT, JSON, "Sec-Fetch-Mode: cors"]), None);
+        assert_eq!(check("GET", "/health", &["Sec-Fetch-Mode: navigate"]), None);
+    }
+
+    #[test]
+    fn web_pages_are_turned_away() {
+        let no = Some("403 Forbidden");
+        assert_eq!(check("POST", "/mcp", &["Origin: null", JSON]), no);
+        assert_eq!(check("POST", "/mcp", &["Origin: https://example.com", JSON]), no);
+        assert_eq!(check("POST", "/mcp", &["Origin: http://tauri.localhost.example.com", JSON]), no);
+        assert_eq!(check("POST", "/mcp", &["Origin: http://localhost.example.com", JSON]), no);
+        assert_eq!(check("POST", "/mcp", &[EXT, JSON]), no);
+        assert_eq!(check("GET", "/ext/next", &["Sec-Fetch-Mode: no-cors"]), no);
+        assert_eq!(check("GET", "/ext/next", &["Sec-Fetch-Mode: navigate"]), no);
+        assert_eq!(check("POST", "/mcp", &["Content-Type: text/plain"]), Some("415 Unsupported Media Type"));
+        assert_eq!(check("POST", "/ext/add", &[]), Some("415 Unsupported Media Type"));
+        let mut rebound = Headers::default();
+        rebound.read("Host: example.com:12731");
+        assert_eq!(refusal("GET", "/ext/next", &rebound), no);
     }
 }

@@ -3,6 +3,7 @@ name = "shortlist"
 version = "0.1.0"
 description = "Job-search CRM that AI assistants fill through MCP"
 edition = "2021"
+rust-version = "1.89"
 authors = ["Dhia Mahdaoui"]
 publish = false
 
