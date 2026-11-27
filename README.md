@@ -74,7 +74,7 @@ Server: `http://127.0.0.1:12731/mcp` (runs while the app is open; `curl http://1
 
 The app queues a scan; the extension picks it up, opens LinkedIn in a background tab, collects job ids from the list (your recommended jobs, or a search), then reads each job's public page for the full description. About one job per second, at most 100 per scan, and it stops if LinkedIn asks it to slow down. It never clicks Apply, Connect, or anything else. Jobs already saved in full are skipped.
 
-Data lives in `%APPDATA%\Shortlist\data.json` on Windows and `~/Library/Application Support/Shortlist/data.json` on macOS.
+Data lives in `%APPDATA%\Shortlist\data.json` on Windows and `~/Library/Application Support/Shortlist/data.json` on macOS. Only one copy of the app can use it: starting Shortlist again brings the open window forward. To run a development copy next to the installed one, give it its own data and port with `SHORTLIST_DATA_DIR` and `SHORTLIST_PORT`.
 
 ## Develop
 
@@ -84,5 +84,7 @@ npx tauri dev
 ```
 
 The UI is plain HTML/CSS/JS in `ui/` (no build step); opening it without Tauri uses sample data. The Rust side is in `src-tauri/src/`: `server.rs` (MCP + extension bridge), `store.rs` (data), `digest.rs` (salary parsing, job briefs), `tools.rs` (finding `claude` on macOS).
+
+**Release the Windows app:** build it with `npm run desktop`, not `npx tauri build`, which would leave your user name and folder paths inside the app.
 
 **Release the Mac app:** push a `v*` tag. The *macOS* workflow builds `Shortlist-macos.dmg`, installs it on a Mac runner to check it starts, and attaches it to that release. It also runs on pull requests and can be started by hand from the Actions tab.

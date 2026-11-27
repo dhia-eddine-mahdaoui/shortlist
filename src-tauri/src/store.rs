@@ -6,7 +6,8 @@ use crate::digest;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::fs::{File, TryLockError};
+use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
@@ -123,6 +124,19 @@ pub struct Shared {
 }
 
 static S: OnceLock<Shared> = OnceLock::new();
+
+/// Takes the data folder for this copy of the app. Two copies would each overwrite the
+/// other's changes, so None means another one already has it. The lock lasts as long as the
+/// returned file stays open, and the system drops it if the app crashes.
+pub fn claim(dir: &Path) -> std::io::Result<Option<File>> {
+    std::fs::create_dir_all(dir)?;
+    let file = File::options().create(true).truncate(false).write(true).open(dir.join("instance.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(e)) => Err(e),
+    }
+}
 
 pub fn init(app: AppHandle, dir: PathBuf) {
     let _ = std::fs::create_dir_all(dir.join("profile"));
@@ -396,5 +410,21 @@ pub fn wait_scan(secs: u64) -> Option<Scan> {
             return Some(sc);
         }
         b = s().cv.wait_timeout(b, left.min(Duration::from_secs(5))).unwrap_or_else(|e| e.into_inner()).0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_one_copy_gets_the_data_folder() {
+        let dir = std::env::temp_dir().join(format!("shortlist-claim-{}", std::process::id()));
+        let first = claim(&dir).unwrap();
+        assert!(first.is_some());
+        assert!(claim(&dir).unwrap().is_none());
+        drop(first);
+        assert!(claim(&dir).unwrap().is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

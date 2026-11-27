@@ -13,7 +13,7 @@ Write-Host 'Installing build tools...'
 npm install --no-fund --no-audit | Out-Null
 
 Write-Host 'Building Shortlist (the first build takes a few minutes)...'
-npx tauri build
+npm run desktop
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 
 $setup = Get-ChildItem 'src-tauri\target\release\bundle\nsis\*-setup.exe' | Sort-Object LastWriteTime | Select-Object -Last 1

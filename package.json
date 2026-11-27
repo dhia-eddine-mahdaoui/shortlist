@@ -5,7 +5,7 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "desktop": "tauri build"
+    "desktop": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0"

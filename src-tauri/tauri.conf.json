@@ -11,6 +11,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Shortlist",
         "width": 1320,
         "height": 860,
