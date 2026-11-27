@@ -1,0 +1,75 @@
+# Builds the universal (Apple silicon + Intel) macOS disk image, installs it with install.sh
+# on a real Mac to check it works, and attaches it to the release for version tags.
+name: macOS
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'ui/**'
+      - 'extension/**'
+      - 'install.sh'
+      - 'package.json'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Rust for both Mac architectures
+        working-directory: src-tauri
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm install --no-fund --no-audit
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test
+      - name: Build
+        run: |
+          npx tauri build --target universal-apple-darwin
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg Shortlist-macos.dmg
+      - name: Install and check
+        run: |
+          mkdir -p "$HOME/.codex"
+          /bin/bash install.sh Shortlist-macos.dmg
+          codesign --verify --deep --strict /Applications/Shortlist.app
+          curl -fsS http://127.0.0.1:12731/mcp -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q next_jobs
+          test -f "$HOME/Library/Application Support/Shortlist/chrome-extension/manifest.json"
+          grep -q 'mcp_servers.shortlist' "$HOME/.codex/config.toml"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Shortlist-macos
+          path: Shortlist-macos.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Shortlist-macos
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --title "Shortlist ${GITHUB_REF_NAME#v}" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" Shortlist-macos.dmg --clobber

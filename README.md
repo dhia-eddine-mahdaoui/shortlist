@@ -1,10 +1,30 @@
 # Shortlist
 
-A small Windows app that keeps your job search in one place. A Chrome extension reads LinkedIn in your own signed-in Chrome; your AI assistant (Claude Code, Codex, anything that speaks MCP) scores each job against your CV and notes, and points out what will make you stand out: a tool the job wants built, a domain they care about, experience to lead with.
+A small macOS and Windows app that keeps your job search in one place. A Chrome extension reads LinkedIn in your own signed-in Chrome; your AI assistant (Claude Code, Codex, anything that speaks MCP) scores each job against your CV and notes, and points out what will make you stand out: a tool the job wants built, a domain they care about, experience to lead with.
 
 No API keys, no LinkedIn login inside the app, no AI backend. The assistant you already use does the thinking through MCP.
 
-## Install
+## Install on macOS
+
+One command in Terminal (needs the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`, because this repository is private):
+
+```bash
+gh api repos/dhia-eddine-mahdaoui/shortlist/contents/install.sh -H "Accept: application/vnd.github.raw" | bash
+```
+
+It downloads the app (Apple silicon and Intel, macOS 11 or later), puts it in Applications, starts it, connects Claude Code and Codex if they're installed, and opens Chrome and Finder for the last step:
+
+1. In Chrome, open `chrome://extensions` and turn on **Developer mode**.
+2. Drag the `chrome-extension` folder from the Finder window onto that page.
+3. Stay signed in to LinkedIn.
+
+**Without Terminal:** download `Shortlist-macos.dmg` from **Releases** and drag Shortlist to Applications. The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 14 or earlier, right-click the app → **Open**). Then follow the app's **Settings** page.
+
+**From source:** in a clone of this repository, `bash install.sh --build`. It installs Rust if needed (and Node.js through Homebrew), asks for Apple's command line tools if they're missing, then builds and installs the same way.
+
+Closing the window leaves Shortlist running in the Dock, so your assistant can still reach it. Quit with ⌘Q.
+
+## Install on Windows
 
 Download `Shortlist_x.y.z_x64-setup.exe` from **Releases** and run it (it isn't code-signed yet: on the SmartScreen warning click **More info** → **Run anyway**). Then connect your assistant from the app's **Settings** page.
 
@@ -54,7 +74,7 @@ Server: `http://127.0.0.1:12731/mcp` (runs while the app is open; `curl http://1
 
 The app queues a scan; the extension picks it up, opens LinkedIn in a background tab, collects job ids from the list (your recommended jobs, or a search), then reads each job's public page for the full description. About one job per second, at most 100 per scan, and it stops if LinkedIn asks it to slow down. It never clicks Apply, Connect, or anything else. Jobs already saved in full are skipped.
 
-Data lives in `%APPDATA%\Shortlist\data.json`.
+Data lives in `%APPDATA%\Shortlist\data.json` on Windows and `~/Library/Application Support/Shortlist/data.json` on macOS.
 
 ## Develop
 
@@ -63,4 +83,6 @@ npm install
 npx tauri dev
 ```
 
-The UI is plain HTML/CSS/JS in `ui/` (no build step); opening it without Tauri uses sample data. The Rust side is in `src-tauri/src/`: `server.rs` (MCP + extension bridge), `store.rs` (data), `digest.rs` (salary parsing, job briefs).
+The UI is plain HTML/CSS/JS in `ui/` (no build step); opening it without Tauri uses sample data. The Rust side is in `src-tauri/src/`: `server.rs` (MCP + extension bridge), `store.rs` (data), `digest.rs` (salary parsing, job briefs), `tools.rs` (finding `claude` on macOS).
+
+**Release the Mac app:** push a `v*` tag. The *macOS* workflow builds `Shortlist-macos.dmg`, installs it on a Mac runner to check it starts, and attaches it to that release. It also runs on pull requests and can be started by hand from the Actions tab.

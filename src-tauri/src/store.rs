@@ -1,5 +1,6 @@
 //! Everything Shortlist keeps: jobs, the profile, saved searches, and the live scan
-//! that the Chrome extension is working on. Saved as one JSON file in %APPDATA%\Shortlist.
+//! that the Chrome extension is working on. Saved as one JSON file in the user's app data
+//! folder (%APPDATA%\Shortlist on Windows, ~/Library/Application Support/Shortlist on macOS).
 
 use crate::digest;
 use serde::{Deserialize, Serialize};

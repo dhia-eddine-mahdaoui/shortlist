@@ -212,7 +212,7 @@ textarea.field:focus, input.field:focus { box-shadow: 0 0 0 1px var(--text) inse
 .searches td.c { width: 64px; text-align: center; }
 .searches td.a { width: 120px; white-space: nowrap; text-align: right; }
 .steps { margin: 0; padding-left: 20px; line-height: 1.7; }
-.code { display: flex; align-items: center; gap: 8px; background: #f6f7f8; border-radius: 6px; padding: 8px 8px 8px 12px; margin: 6px 0 12px; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; overflow-x: auto; }
+.code { display: flex; align-items: center; gap: 8px; background: #f6f7f8; border-radius: 6px; padding: 8px 8px 8px 12px; margin: 6px 0 12px; font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: 12.5px; overflow-x: auto; }
 .code span { flex: 1; white-space: nowrap; }
 .kv { display: grid; grid-template-columns: 180px 1fr; gap: 10px 16px; align-items: center; }
 .kv label { color: var(--muted); }

@@ -623,6 +623,10 @@ function renderSettings() {
   const el = $('#view-settings');
   const claudeCmd = `claude mcp add --transport http --scope user shortlist ${d.mcpUrl}`;
   const codexCfg = `[mcp_servers.shortlist]  url = "${d.mcpUrl}"`;
+  // On macOS the folder sits in ~/Library, which Chrome's folder picker hides.
+  const loadStep = d.os === 'macos'
+    ? `Drag the <a href="#" id="s-ext">chrome-extension folder</a> (click to show it in Finder) onto that page. Or click <b>Load unpacked</b>, press <b>⌘⇧G</b>, paste the path below and press Return.`
+    : `Click <b>Load unpacked</b> and pick this folder: <a href="#" id="s-ext">${esc(d.extDir)}</a>`;
   el.innerHTML = `<div class="page-in">
     <div class="panel">
       <h2>Connect your AI assistant</h2>
@@ -639,7 +643,7 @@ function renderSettings() {
       <div class="sub">Reads LinkedIn in your own signed-in Chrome, so there are no API keys and nothing to log in to here. ${d.chrome ? '<b>Connected.</b>' : 'Not connected yet.'}</div>
       <ol class="steps">
         <li>Open <a href="#" id="s-chrome">chrome://extensions</a> and turn on <b>Developer mode</b> (top right).</li>
-        <li>Click <b>Load unpacked</b> and pick this folder: <a href="#" id="s-ext">${esc(d.extDir)}</a></li>
+        <li>${loadStep}</li>
         <li>Stay signed in to LinkedIn in Chrome. The extension opens a background tab during scans and closes it after.</li>
       </ol>
       <div class="code"><span>${esc(d.extDir)}</span><button class="btn small plain" data-copy="${esc(d.extDir)}">Copy path</button></div>
@@ -661,7 +665,19 @@ function renderSettings() {
     try { toast(await api('connect_ai', { kind: b.dataset.ai }), 5000); } catch (e) { toast(String(e), 6000); }
     b.disabled = false;
   }));
-  $('#s-chrome').onclick = (e) => { e.preventDefault(); api('open', { target: 'chrome-extensions' }).catch(() => copy('chrome://extensions')); };
+  $('#s-chrome').onclick = async (e) => {
+    e.preventDefault();
+    if (d.os !== 'macos') return api('open', { target: 'chrome-extensions' }).catch(() => copy('chrome://extensions'));
+    // Chrome may ignore chrome:// links from other apps, so copy the address as well.
+    // Copy first: the clipboard needs this window to still be in front.
+    await copy('chrome://extensions');
+    try {
+      await api('open', { target: 'chrome-extensions' });
+      toast('Address copied. If Chrome didn\'t open the page, paste it into the address bar.', 6000);
+    } catch {
+      toast('Address copied. Open Chrome and paste it into the address bar.', 6000);
+    }
+  };
   $('#s-ext').onclick = (e) => { e.preventDefault(); api('open', { target: 'extension' }); };
   $('#s-data').onclick = (e) => { e.preventDefault(); api('open', { target: 'data' }); };
   $('#s-limit').onchange = (e) => api('set_scan_limit', { limit: Math.max(1, Math.min(100, +e.target.value || 30)) });
@@ -717,7 +733,7 @@ $('#scan-cancel').onclick = async () => { await api('cancel_scan'); pollStatus()
 $('#q').oninput = (e) => { S.f.q = e.target.value; if (S.view === 'jobs') renderJobs(); else if (S.view === 'pipeline') renderPipeline(); };
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenu();
-  if ((e.ctrlKey && e.key === 'f') || (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { e.preventDefault(); $('#q').focus(); }
+  if (((e.ctrlKey || e.metaKey) && e.key === 'f') ||(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { e.preventDefault(); $('#q').focus(); }
   if (S.view === 'jobs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
     const list = filtered();
     const i = list.findIndex((j) => j.id === S.sel);
@@ -751,7 +767,7 @@ function mock(cmd, args) {
       ],
       summary: '', summaryAt: 0, stale: false, preferences: 'London or remote, £70K+.', searches: [{ name: 'ai engineer', keywords: 'ai engineer', location: 'London', remote: false, days: 14 }],
       scanLimit: 30, docs: [{ name: 'cv.pdf', size: 120000, modified: now }], chrome: true, scan: null,
-      mcpUrl: 'http://127.0.0.1:12731/mcp', dataDir: 'C:\\Users\\you\\AppData\\Roaming\\Shortlist', extDir: 'C:\\Users\\you\\AppData\\Roaming\\Shortlist\\chrome-extension',
+      os: 'windows', mcpUrl: 'http://127.0.0.1:12731/mcp', dataDir:'C:\\Users\\you\\AppData\\Roaming\\Shortlist', extDir: 'C:\\Users\\you\\AppData\\Roaming\\Shortlist\\chrome-extension',
     };
   }
   const db = mock.db;
