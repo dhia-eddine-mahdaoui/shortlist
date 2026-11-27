@@ -1,6 +1,8 @@
 mod digest;
 mod server;
 mod store;
+#[cfg_attr(windows, allow(dead_code))]
+mod tools;
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -49,6 +51,7 @@ fn get_state() -> Value {
         "mcpUrl": mcp_url(),
         "dataDir": store::s().dir.display().to_string(),
         "extDir": ext_dir().display().to_string(),
+        "os": std::env::consts::OS,
     })
 }
 
@@ -161,18 +164,39 @@ fn shell_open(target: &str) {
     }
 }
 
+/// Shows the extension folder. On macOS it is selected in Finder, ready to drag into Chrome
+/// (it lives in ~/Library, which Chrome's folder picker hides).
+fn reveal_extension() {
+    let dir = ext_dir().display().to_string();
+    if cfg!(target_os = "macos") {
+        let _ = Command::new("open").args(["-R", &dir]).spawn();
+    } else {
+        shell_open(&dir);
+    }
+}
+
+fn open_chrome_extensions() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        Command::new("cmd").args(["/C", "start", "", "chrome", "chrome://extensions/"]).creation_flags(NO_WINDOW).spawn().map_err(|e| e.to_string())?;
+    }
+    // `open` fails when Chrome isn't installed.
+    if cfg!(target_os = "macos") {
+        let status = Command::new("open").args(["-a", "Google Chrome", "chrome://extensions/"]).status().map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("Google Chrome wasn't found".into());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn open(target: String) -> Result<(), String> {
     match target.as_str() {
         "docs" => shell_open(&store::docs_dir().display().to_string()),
         "data" => shell_open(&store::s().dir.display().to_string()),
-        "extension" => shell_open(&ext_dir().display().to_string()),
-        "chrome-extensions" => {
-            #[cfg(windows)]
-            {
-                Command::new("cmd").args(["/C", "start", "", "chrome", "chrome://extensions/"]).creation_flags(NO_WINDOW).spawn().map_err(|e| e.to_string())?;
-            }
-        }
+        "extension" => reveal_extension(),
+        "chrome-extensions" => open_chrome_extensions()?,
         t if t.starts_with("https://") => shell_open(t),
         _ => return Err("not allowed".into()),
     }
@@ -189,16 +213,28 @@ fn cancel_scan() {
     store::cancel_scan();
 }
 
-/// Registers the MCP server with Claude Code or Codex for this Windows user.
+const NO_CLAUDE: &str = "The claude command wasn't found. Install Claude Code or run the command shown below yourself.";
+
+#[cfg(windows)]
+fn claude_command() -> Option<Command> {
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/C", "claude"]).creation_flags(NO_WINDOW);
+    Some(cmd)
+}
+
+#[cfg(not(windows))]
+fn claude_command() -> Option<Command> {
+    tools::command("claude")
+}
+
+/// Registers the MCP server with Claude Code or Codex for this user.
 #[tauri::command]
 async fn connect_ai(kind: String) -> Result<String, String> {
     let url = mcp_url();
     match kind.as_str() {
         "claude" => {
-            let mut cmd = Command::new("cmd");
-            cmd.args(["/C", "claude", "mcp", "add", "--transport", "http", "--scope", "user", "shortlist", &url]);
-            #[cfg(windows)]
-            cmd.creation_flags(NO_WINDOW);
+            let mut cmd = claude_command().ok_or(NO_CLAUDE)?;
+            cmd.args(["mcp", "add", "--transport", "http", "--scope", "user", "shortlist", &url]);
             let out = cmd.output().map_err(|e| e.to_string())?;
             let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
             if out.status.success() {
@@ -206,7 +242,7 @@ async fn connect_ai(kind: String) -> Result<String, String> {
             } else if text.contains("already exists") {
                 Ok("Claude Code already has Shortlist.".into())
             } else if text.contains("not recognized") {
-                Err("The claude command wasn't found. Install Claude Code or run the command shown below yourself.".into())
+                Err(NO_CLAUDE.into())
             } else {
                 Err(text.trim().to_string())
             }
@@ -249,6 +285,30 @@ pub fn run() {
             server::start();
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Shortlist");
+        .on_window_event(|_window, _event| {
+            // macOS: closing the window keeps Shortlist (and its server) running in the Dock.
+            // Quit with ⌘Q.
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = _event {
+                api.prevent_close();
+                // Hiding a full-screen window leaves a black screen, so leave full screen first.
+                if _window.is_fullscreen().unwrap_or(false) {
+                    let _ = _window.set_fullscreen(false);
+                } else {
+                    let _ = _window.hide();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while running Shortlist")
+        .run(|_app, _event| {
+            // Clicking the Dock icon brings the window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Some(w) = _app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        });
 }
