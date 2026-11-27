@@ -151,9 +151,13 @@ chrome_step() {
     say '     Or: Load unpacked, press Cmd+Shift+G, paste the path (already copied), press Return.'
     say "     $ext"
     say '  3. Stay signed in to LinkedIn.'
-    open -a 'Google Chrome' 'chrome://extensions/' 2>/dev/null ||
-        say 'Google Chrome was not found. Install it from https://www.google.com/chrome/ first.'
-    open -R "$ext" 2>/dev/null || true
+    if [ ! -d '/Applications/Google Chrome.app' ] && [ ! -d "$HOME/Applications/Google Chrome.app" ]; then
+        say 'No Google Chrome in Applications. Get it from https://www.google.com/chrome/ if you need it.'
+    fi
+    # In the background: "open" can hang while Chrome starts up, and the install is already done.
+    open -a 'Google Chrome' 'chrome://extensions/' </dev/null >/dev/null 2>&1 &
+    sleep 2    # so the Finder window ends up in front of Chrome
+    open -R "$ext" </dev/null >/dev/null 2>&1 &
 }
 
 main() {

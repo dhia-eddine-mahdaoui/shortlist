@@ -41,11 +41,12 @@ jobs:
           npx tauri build --target universal-apple-darwin
           cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg Shortlist-macos.dmg
       - name: Install and check
+        timeout-minutes: 5
         run: |
           mkdir -p "$HOME/.codex"
           /bin/bash install.sh Shortlist-macos.dmg
           codesign --verify --deep --strict /Applications/Shortlist.app
-          curl -fsS http://127.0.0.1:12731/mcp -H 'Content-Type: application/json' \
+          curl -fsS --max-time 10 http://127.0.0.1:12731/mcp -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q next_jobs
           test -f "$HOME/Library/Application Support/Shortlist/chrome-extension/manifest.json"
           grep -q 'mcp_servers.shortlist' "$HOME/.codex/config.toml"
