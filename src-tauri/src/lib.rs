@@ -190,7 +190,8 @@ fn open_chrome_extensions() -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+// Off the main thread: macOS "open" can take a long time to return while Chrome starts up.
+#[tauri::command(async)]
 fn open(target: String) -> Result<(), String> {
     match target.as_str() {
         "docs" => shell_open(&store::docs_dir().display().to_string()),
