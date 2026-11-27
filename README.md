@@ -6,10 +6,10 @@ No API keys, no LinkedIn login inside the app, no AI backend. The assistant you 
 
 ## Install on macOS
 
-One command in Terminal (needs the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`, because this repository is private):
+One command in Terminal:
 
 ```bash
-gh api repos/dhia-eddine-mahdaoui/shortlist/contents/install.sh -H "Accept: application/vnd.github.raw" | bash
+curl -fsSL https://raw.githubusercontent.com/dhia-eddine-mahdaoui/shortlist/main/install.sh | bash
 ```
 
 It downloads the app (Apple silicon and Intel, macOS 11 or later), puts it in Applications, starts it, connects Claude Code and Codex if they're installed, and opens Chrome and Finder for the last step:
@@ -18,7 +18,7 @@ It downloads the app (Apple silicon and Intel, macOS 11 or later), puts it in Ap
 2. Drag the `chrome-extension` folder from the Finder window onto that page.
 3. Stay signed in to LinkedIn.
 
-**Without Terminal:** download `Shortlist-macos.dmg` from **Releases** and drag Shortlist to Applications. The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 14 or earlier, right-click the app → **Open**). Then follow the app's **Settings** page.
+**Without Terminal:** download `Shortlist-macos.dmg` from the [latest release](https://github.com/dhia-eddine-mahdaoui/shortlist/releases/latest) and drag Shortlist to Applications. The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 14 or earlier, right-click the app → **Open**). Then follow the app's **Settings** page.
 
 **From source:** in a clone of this repository, `bash install.sh --build`. It installs Rust if needed (and Node.js through Homebrew), asks for Apple's command line tools if they're missing, then builds and installs the same way.
 
@@ -26,7 +26,7 @@ Closing the window leaves Shortlist running in the Dock, so your assistant can s
 
 ## Install on Windows
 
-Download `Shortlist_x.y.z_x64-setup.exe` from **Releases** and run it (it isn't code-signed yet: on the SmartScreen warning click **More info** → **Run anyway**). Then connect your assistant from the app's **Settings** page.
+Download `Shortlist_x.y.z_x64-setup.exe` from the [latest release](https://github.com/dhia-eddine-mahdaoui/shortlist/releases/latest) and run it (it isn't code-signed yet: on the SmartScreen warning click **More info** → **Run anyway**). Then connect your assistant from the app's **Settings** page.
 
 Or build from source:
 
